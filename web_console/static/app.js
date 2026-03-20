@@ -460,6 +460,11 @@ function getFilteredTasks() {
   return state.tasks.filter((task) => task.status === state.taskFilterStatus);
 }
 
+function getTaskDisplayName(task) {
+  const name = typeof task?.name === 'string' ? task.name.trim() : '';
+  return name || `#${task.id}`;
+}
+
 function resolveVisibleTask(tasks) {
   return tasks.find((item) => item.id === state.selectedTaskId) || tasks[0] || null;
 }
@@ -467,24 +472,52 @@ function resolveVisibleTask(tasks) {
 function renderTasksSidebar(activeTaskId = state.selectedTaskId) {
   const wrap = document.getElementById('task-list');
   const tasks = getFilteredTasks();
-  wrap.innerHTML = tasks.length ? tasks.map((task) => `
-    <button class="task-side-item ${activeTaskId === task.id ? 'selected' : ''}" data-id="${task.id}">
-      <div class="task-side-item__top">
-        <strong class="task-side-item__name">${task.name}</strong>
-        <span class="task-side-item__id">#${task.id}</span>
-      </div>
-      <div class="task-side-item__meta">
-        <span class="task-side-item__count">${task.results_count}/${task.quantity}</span>
-        <span class="status-pill status-pill--${task.status}">${statusLabel(task.status)}</span>
-      </div>
-    </button>
-  `).join('') : `<p class="empty">${tr('empty_filtered_tasks')}</p>`;
+  wrap.innerHTML = '';
 
-  wrap.querySelectorAll('[data-id]').forEach((button) => {
+  if (!tasks.length) {
+    wrap.innerHTML = `<p class="empty">${tr('empty_filtered_tasks')}</p>`;
+    return;
+  }
+
+  tasks.forEach((task) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `task-side-item ${activeTaskId === task.id ? 'selected' : ''}`.trim();
+    button.dataset.id = String(task.id);
+
+    const top = document.createElement('div');
+    top.className = 'task-side-item__top';
+
+    const name = document.createElement('strong');
+    name.className = 'task-side-item__name';
+    name.textContent = getTaskDisplayName(task);
+
+    const id = document.createElement('span');
+    id.className = 'task-side-item__id';
+    id.textContent = `#${task.id}`;
+
+    top.append(name, id);
+
+    const meta = document.createElement('div');
+    meta.className = 'task-side-item__meta';
+
+    const count = document.createElement('span');
+    count.className = 'task-side-item__count';
+    count.textContent = `${task.results_count}/${task.quantity}`;
+
+    const status = document.createElement('span');
+    status.className = `status-pill status-pill--${task.status}`;
+    status.textContent = statusLabel(task.status);
+
+    meta.append(count, status);
+    button.append(top, meta);
+
     button.addEventListener('click', () => {
       state.selectedTaskId = Number(button.dataset.id);
       renderTaskDetail();
     });
+
+    wrap.appendChild(button);
   });
 }
 
@@ -506,17 +539,20 @@ function renderTaskDetail() {
 
   state.selectedTaskId = task.id;
   renderTasksSidebar(task.id);
-  header.innerHTML = `
-    <div>
-      <h3>${task.name} (#${task.id})</h3>
-      <p class="meta">${tr('task_header_meta', {
-        platform: task.platform,
-        quantity: task.quantity,
-        completed: task.results_count,
-        status: statusLabel(task.status),
-      })}</p>
-    </div>
-  `;
+  header.innerHTML = '';
+  const headerWrap = document.createElement('div');
+  const title = document.createElement('h3');
+  title.textContent = `${getTaskDisplayName(task)} (#${task.id})`;
+  const meta = document.createElement('p');
+  meta.className = 'meta';
+  meta.textContent = tr('task_header_meta', {
+    platform: task.platform,
+    quantity: task.quantity,
+    completed: task.results_count,
+    status: statusLabel(task.status),
+  });
+  headerWrap.append(title, meta);
+  header.appendChild(headerWrap);
 
   actions.innerHTML = '';
 
