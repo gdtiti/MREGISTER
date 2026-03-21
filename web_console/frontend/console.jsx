@@ -16,26 +16,85 @@ import {
 } from './config.js';
 import { BusyButton, Modal } from './ui.jsx';
 
-function getCompactLabel(sectionId, label) {
-  const text = String(label || '').trim();
-  if (!text) {
-    return sectionId.slice(0, 2).toUpperCase();
+const SIDEBAR_LOGO_SRC = '/static/MAISHANhlogomini.png';
+
+function normalizeStatePayload(payload) {
+  return {
+    ...payload,
+    credentials: payload.credentials || [],
+    proxies: payload.proxies || [],
+    tasks: payload.tasks || [],
+    schedules: payload.schedules || [],
+    apiKeys: payload.apiKeys || payload.api_keys || [],
+    defaults: payload.defaults || {},
+    dashboard: payload.dashboard || {},
+    platforms: payload.platforms || {},
+  };
+}
+
+function SidebarIcon({ name }) {
+  switch (name) {
+    case 'dashboard':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 13.5h7V20H4zM13 4h7v9H13zM13 15h7v5H13zM4 4h7v7.5H4z" />
+        </svg>
+      );
+    case 'credentials':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 3a5 5 0 0 0-1.2 9.86A7.51 7.51 0 0 0 4 20h2a5.5 5.5 0 0 1 11 0h3a4 4 0 0 0-4-4h-1.2a5 5 0 0 0-2.8-13Z" />
+        </svg>
+      );
+    case 'proxies':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 7h16v4H4zM6 13h12v4H6zM8 3h8v2H8zM10 18h4v3h-4z" />
+        </svg>
+      );
+    case 'create-task':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M5 4h9l5 5v11H5zM14 4v5h5M12 11v6M9 14h6" />
+        </svg>
+      );
+    case 'task-detail':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />
+        </svg>
+      );
+    case 'schedules':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M7 2v3M17 2v3M4 7h16v13H4zM8 11h3v3H8zM13 11h3v3h-3zM8 16h3v1H8zM13 16h3v1h-3z" />
+        </svg>
+      );
+    case 'api-keys':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M14 7a4 4 0 1 1 3.87 5H16l-2 2h-2l-1 1H8l-2 2H3v-3l6.17-6.17A4 4 0 0 1 14 7Zm3-1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+        </svg>
+      );
+    case 'docs':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 4h9l3 3v13H6zM15 4v4h4M9 11h6M9 15h6" />
+        </svg>
+      );
+    case 'logout':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="6" />
+        </svg>
+      );
   }
-
-  const glyphs = Array.from(text);
-  if (glyphs.some((char) => /[\u3400-\u9fff]/.test(char))) {
-    return glyphs.slice(0, 2).join('');
-  }
-
-  const initials = text
-    .split(/[\s/-]+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
-  return initials || glyphs.slice(0, 2).join('').toUpperCase();
 }
 
 export function ConsoleApp() {
@@ -142,7 +201,7 @@ export function ConsoleApp() {
   }, []);
 
   async function refreshState({ initial = false } = {}) {
-    const payload = await api('/api/state');
+    const payload = normalizeStatePayload(await api('/api/state'));
     setStatePayload(payload);
     setLoaded(true);
     setLoadError('');
@@ -932,6 +991,7 @@ export function ConsoleApp() {
   }
 
   function renderApiKeys() {
+    const apiKeys = statePayload.apiKeys || [];
     return (
       <section className="section-card active">
         <div className="section-head">
@@ -970,7 +1030,7 @@ export function ConsoleApp() {
               </div>
             </div>
             <div className="entity-list">
-              {statePayload.apiKeys.length ? statePayload.apiKeys.map((item) => (
+              {apiKeys.length ? apiKeys.map((item) => (
                 <article className="entity-card" key={item.id}>
                   <div>
                     <h3>{item.name}</h3>
@@ -1125,7 +1185,9 @@ Authorization: Bearer YOUR_API_KEY`}</pre>
         <aside className="sidebar">
           <div className="sidebar-top">
             <div className="sidebar-brand">
-              <div className="brand-mark" aria-hidden="true">MR</div>
+              <div className="brand-logo-wrap">
+                <img className="brand-logo" src={SIDEBAR_LOGO_SRC} alt={tr('brand_name')} />
+              </div>
               <div className="brand-copy">
                 <p className="eyebrow">{tr('brand_console')}</p>
                 <h1>{tr('brand_name')}</h1>
@@ -1152,7 +1214,7 @@ Authorization: Bearer YOUR_API_KEY`}</pre>
                   className={`nav-btn ${activeSection === sectionId ? 'active' : ''}`.trim()}
                   onClick={() => switchSection(sectionId)}
                 >
-                  <span className="nav-btn__short" aria-hidden="true">{getCompactLabel(sectionId, label)}</span>
+                  <span className="nav-btn__icon" aria-hidden="true"><SidebarIcon name={sectionId} /></span>
                   <span className="nav-btn__label">{label}</span>
                 </button>
               );
@@ -1160,7 +1222,7 @@ Authorization: Bearer YOUR_API_KEY`}</pre>
           </nav>
           <div className="sidebar-footer">
             <BusyButton type="button" className="sidebar-logout" busy={isBusy('logout')} onClick={handleLogout} title={logoutLabel}>
-              <span className="nav-btn__short" aria-hidden="true">{getCompactLabel('logout', logoutLabel)}</span>
+              <span className="nav-btn__icon" aria-hidden="true"><SidebarIcon name="logout" /></span>
               <span className="nav-btn__label">{logoutLabel}</span>
             </BusyButton>
           </div>
