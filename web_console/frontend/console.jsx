@@ -141,7 +141,7 @@ function getDocsContent(uiLang, apiBaseUrl) {
       usageTitle: '日常使用流程',
       usageText: '如果你主要在后台手动操作，建议按下面的顺序使用。',
       usageSteps: [
-        '在“新建任务”中选择平台、数量、并发和代理模式。',
+        '在“新建任务”中选择驱动、数量、并发和代理模式。',
         '创建任务后跳转到“任务详情”，查看实时日志和完成数。',
         '任务结束后下载压缩包并核对结果。',
         '如果是高频固定需求，用“定时任务”自动触发。',
@@ -164,7 +164,7 @@ function getDocsContent(uiLang, apiBaseUrl) {
       paramsTitle: '创建任务参数',
       paramHeaders: ['字段', '类型', '必填', '说明'],
       params: [
-        ['platform', 'string', '是', '支持 `openai-register` 与 `grok-register`'],
+        ['platform', 'string', '是', '支持 `openai-register`、`openai-register-bate-L` 与 `grok-register`'],
         ['quantity', 'integer', '是', '目标成功数量，按真实成功数统计'],
         ['use_proxy', 'boolean', '否', '是否使用后台默认代理'],
         ['concurrency', 'integer', '否', '并发数，默认 1'],
@@ -235,7 +235,7 @@ Authorization: Bearer YOUR_API_KEY`,
     usageTitle: 'Daily Workflow',
     usageText: 'For manual operation inside the console, the following order keeps things simple.',
     usageSteps: [
-      'Create a task with platform, quantity, concurrency, and proxy mode.',
+      'Create a task with driver, quantity, concurrency, and proxy mode.',
       'Open Task Detail to inspect live logs and completion counts.',
       'Download the archive after completion and verify outputs.',
       'Use schedules for repeated daily jobs.',
@@ -258,7 +258,7 @@ Authorization: Bearer YOUR_API_KEY`,
     paramsTitle: 'Create Task Parameters',
     paramHeaders: ['Field', 'Type', 'Required', 'Description'],
     params: [
-      ['platform', 'string', 'yes', 'Supports `openai-register` and `grok-register`'],
+      ['platform', 'string', 'yes', 'Supports `openai-register`, `openai-register-bate-L`, and `grok-register`'],
       ['quantity', 'integer', 'yes', 'Target success count'],
       ['use_proxy', 'boolean', 'no', 'Whether to use the configured default proxy'],
       ['concurrency', 'integer', 'no', 'Concurrency, default is 1'],
@@ -819,17 +819,30 @@ export function ConsoleApp() {
               </label>
               {credentialDraft.kind === 'gptmail' ? (
                 <>
+                  <p className="field-tip field-tip--soft">{tr('gptmail_optional_hint')}</p>
                   <label className="field-card">
                     <span>{tr('field_base_url')}</span>
-                    <input value={credentialDraft.base_url} onChange={(event) => setCredentialDraft((current) => ({ ...current, base_url: event.target.value }))} />
+                    <input
+                      value={credentialDraft.base_url}
+                      placeholder={tr('field_base_url_placeholder')}
+                      onChange={(event) => setCredentialDraft((current) => ({ ...current, base_url: event.target.value }))}
+                    />
                   </label>
                   <label className="field-card">
                     <span>{tr('field_prefix')}</span>
-                    <input value={credentialDraft.prefix} onChange={(event) => setCredentialDraft((current) => ({ ...current, prefix: event.target.value }))} />
+                    <input
+                      value={credentialDraft.prefix}
+                      placeholder={tr('field_prefix_placeholder')}
+                      onChange={(event) => setCredentialDraft((current) => ({ ...current, prefix: event.target.value }))}
+                    />
                   </label>
                   <label className="field-card">
                     <span>{tr('field_domain')}</span>
-                    <input value={credentialDraft.domain} onChange={(event) => setCredentialDraft((current) => ({ ...current, domain: event.target.value }))} />
+                    <input
+                      value={credentialDraft.domain}
+                      placeholder={tr('field_domain_placeholder')}
+                      onChange={(event) => setCredentialDraft((current) => ({ ...current, domain: event.target.value }))}
+                    />
                   </label>
                 </>
               ) : null}
@@ -1274,7 +1287,7 @@ export function ConsoleApp() {
       paramsTitle: '创建任务参数',
       paramHeaders: ['字段', '类型', '必填', '说明'],
       params: [
-        ['platform', 'string', '是', '支持 `openai-register` 与 `grok-register`'],
+        ['platform', 'string', '是', '支持 `openai-register`、`openai-register-bate-L` 与 `grok-register`'],
         ['quantity', 'integer', '是', '目标成功数量，按真实成功数统计'],
         ['use_proxy', 'boolean', '否', '是否使用后台默认代理'],
         ['concurrency', 'integer', '否', '并发数，默认 `1`'],
@@ -1343,7 +1356,7 @@ Authorization: Bearer YOUR_API_KEY`,
       paramsTitle: 'Create Task Parameters',
       paramHeaders: ['Field', 'Type', 'Required', 'Description'],
       params: [
-        ['platform', 'string', 'yes', 'Supports `openai-register` and `grok-register`'],
+        ['platform', 'string', 'yes', 'Supports `openai-register`, `openai-register-bate-L`, and `grok-register`'],
         ['quantity', 'integer', 'yes', 'Target success count'],
         ['use_proxy', 'boolean', 'no', 'Whether to use the configured default proxy'],
         ['concurrency', 'integer', 'no', 'Concurrency, default is `1`'],

@@ -44,6 +44,14 @@ PLATFORMS = {
         "default_concurrency": 1,
         "notes": "Uses GPTMail and writes token/account files into the task directory.",
     },
+    "openai-register-bate-L": {
+        "label": "OpenAl Register L临时版本",
+        "requires_email_credential": True,
+        "requires_captcha_credential": False,
+        "supports_proxy": True,
+        "default_concurrency": 1,
+        "notes": "Uses GPTMail and writes token/account files into the task directory.",
+    },
     "grok-register": {
         "label": "Grok Register",
         "requires_email_credential": False,
@@ -92,6 +100,7 @@ UI_TRANSLATIONS = {
         "section_credentials": "凭据管理",
         "credentials_create_title": "新增凭据",
         "credentials_create_desc": "支持 GPTMail 与 YesCaptcha，保存后可直接设为默认。",
+        "gptmail_optional_hint": "GPTMail 的 Base URL、邮箱前缀、邮箱域名都有默认值，可直接留空不填写。",
         "credentials_saved_title": "已保存凭据",
         "credentials_saved_desc": "支持删除、查看备注、设为默认。",
         "field_name": "名称",
@@ -100,6 +109,9 @@ UI_TRANSLATIONS = {
         "field_base_url": "Base URL",
         "field_prefix": "邮箱前缀",
         "field_domain": "邮箱域名",
+        "field_base_url_placeholder": "留空使用默认 Base URL",
+        "field_prefix_placeholder": "留空使用默认邮箱前缀",
+        "field_domain_placeholder": "留空使用默认邮箱域名",
         "field_notes": "备注",
         "save_credential": "保存凭据",
         "section_proxies": "代理管理",
@@ -111,7 +123,7 @@ UI_TRANSLATIONS = {
         "save_proxy": "保存代理",
         "section_tasks": "新建任务",
         "field_task_name": "任务名称",
-        "field_platform": "平台",
+        "field_platform": "驱动",
         "field_quantity": "目标数量",
         "field_concurrency": "并发数",
         "field_email_credential": "邮件凭据",
@@ -170,7 +182,7 @@ UI_TRANSLATIONS = {
         "endpoint_download_desc": "下载任务结果压缩包",
         "required_yes": "是",
         "required_no": "否",
-        "param_platform_desc": "平台名称，目前支持 `openai-register` 和 `grok-register`",
+        "param_platform_desc": "驱动名称，目前支持 `openai-register`、`openai-register-bate-L` 和 `grok-register`",
         "param_quantity_desc": "目标成功数量，系统按真实成功数判断完成，不按尝试次数计算",
         "param_use_proxy_desc": "是否启用默认代理，不传或传 false 表示不使用代理",
         "param_concurrency_desc": "并发数，默认 1",
@@ -272,6 +284,7 @@ UI_TRANSLATIONS = {
         "section_credentials": "Credential Management",
         "credentials_create_title": "Add credential",
         "credentials_create_desc": "Supports GPTMail and YesCaptcha. You can set the saved item as default immediately.",
+        "gptmail_optional_hint": "For GPTMail, Base URL, email prefix, and email domain all have defaults, so you can leave them blank.",
         "credentials_saved_title": "Saved credentials",
         "credentials_saved_desc": "Delete, review notes, and set defaults here.",
         "field_name": "Name",
@@ -280,6 +293,9 @@ UI_TRANSLATIONS = {
         "field_base_url": "Base URL",
         "field_prefix": "Email prefix",
         "field_domain": "Email domain",
+        "field_base_url_placeholder": "Leave blank to use the default Base URL",
+        "field_prefix_placeholder": "Leave blank to use the default email prefix",
+        "field_domain_placeholder": "Leave blank to use the default email domain",
         "field_notes": "Notes",
         "save_credential": "Save credential",
         "section_proxies": "Proxy Management",
@@ -291,7 +307,7 @@ UI_TRANSLATIONS = {
         "save_proxy": "Save proxy",
         "section_tasks": "Create Task",
         "field_task_name": "Task name",
-        "field_platform": "Platform",
+        "field_platform": "Driver",
         "field_quantity": "Target quantity",
         "field_concurrency": "Concurrency",
         "field_email_credential": "Email credential",
@@ -350,7 +366,7 @@ UI_TRANSLATIONS = {
         "endpoint_download_desc": "下载任务结果压缩包",
         "required_yes": "Yes",
         "required_no": "No",
-        "param_platform_desc": "平台名称，目前支持 `openai-register` 和 `grok-register`",
+        "param_platform_desc": "Driver name. Supported values: `openai-register`, `openai-register-bate-L`, and `grok-register`",
         "param_quantity_desc": "目标成功数量，系统按真实成功数判断完成，不按尝试次数计算",
         "param_use_proxy_desc": "是否启用默认代理，不传或传 false 表示不使用代理",
         "param_concurrency_desc": "并发数，默认 1",
@@ -590,7 +606,7 @@ def execute(query: str, params: tuple[Any, ...] = ()) -> int:
     with db_lock, get_connection() as conn:
         cursor = conn.execute(query, params)
         conn.commit()
-        return int(cursor.lastrowid)
+        return int(cursor.lastrowid or 0)
 
 
 def execute_no_return(query: str, params: tuple[Any, ...] = ()) -> None:
@@ -818,7 +834,7 @@ def resolve_proxy_value(proxy_mode: str, proxy_id: int | None) -> str | None:
 
 def task_paths(task: sqlite3.Row | dict[str, Any]) -> dict[str, Path]:
     task_dir = Path(task["task_dir"])
-    if task["platform"] == "openai-register":
+    if task["platform"] in {"openai-register", "openai-register-bate-L"}:
         results_file = task_dir / "output" / "tokens" / "accounts.txt"
     else:
         results_file = task_dir / "keys" / "accounts.txt"
@@ -1162,7 +1178,7 @@ class TaskSupervisor:
         env["PYTHONUNBUFFERED"] = "1"
         stdin_payload: str | None = None
 
-        if task["platform"] == "openai-register":
+        if task["platform"] in {"openai-register", "openai-register-bate-L"}:
             credential = get_credential(int(task["email_credential_id"]))
             env["GPTMAIL_API_KEY"] = credential["api_key"]
             if credential["base_url"]:
@@ -1171,9 +1187,10 @@ class TaskSupervisor:
                 env["GPTMAIL_PREFIX"] = credential["prefix"]
             if credential["domain"]:
                 env["GPTMAIL_DOMAIN"] = credential["domain"]
+            script_dir = "openai-register-bate-L" if task["platform"] == "openai-register-bate-L" else "openai-register"
             command = [
                 sys.executable,
-                str(ROOT_DIR / "openai-register" / "openai_register.py"),
+                str(ROOT_DIR / script_dir / "openai_register.py"),
                 "--output-dir",
                 str(task_dir / "output"),
                 "--sleep-min",
@@ -1183,7 +1200,7 @@ class TaskSupervisor:
             ]
             if task["proxy"]:
                 command.extend(["--proxy", str(task["proxy"])])
-            cwd = ROOT_DIR / "openai-register"
+            cwd = ROOT_DIR / script_dir
         elif task["platform"] == "grok-register":
             credential = get_credential(int(task["captcha_credential_id"]))
             env["YESCAPTCHA_KEY"] = credential["api_key"]
