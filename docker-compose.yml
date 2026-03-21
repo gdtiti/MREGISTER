@@ -1,6 +1,9 @@
 services:
   register-console:
-    image: maishanhub/mregister:main
+    build:
+      context: .
+      dockerfile: web_console/Dockerfile
+    image: mregister:local
     container_name: register-console
     ports:
       - "8000:8000"

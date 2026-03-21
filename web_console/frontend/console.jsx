@@ -16,6 +16,28 @@ import {
 } from './config.js';
 import { BusyButton, Modal } from './ui.jsx';
 
+function getCompactLabel(sectionId, label) {
+  const text = String(label || '').trim();
+  if (!text) {
+    return sectionId.slice(0, 2).toUpperCase();
+  }
+
+  const glyphs = Array.from(text);
+  if (glyphs.some((char) => /[\u3400-\u9fff]/.test(char))) {
+    return glyphs.slice(0, 2).join('');
+  }
+
+  const initials = text
+    .split(/[\s/-]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return initials || glyphs.slice(0, 2).join('').toUpperCase();
+}
+
 export function ConsoleApp() {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1');
@@ -76,6 +98,8 @@ export function ConsoleApp() {
     : statePayload.tasks.filter((task) => task.status === taskFilterStatus);
   const visibleTask = filteredTasks.find((item) => item.id === selectedTaskId) || filteredTasks[0] || null;
   const currentPlatformSpec = statePayload.platforms[taskDraft.platform] || {};
+  const currentSectionLabel = tr(NAV_ITEMS.find(([sectionId]) => sectionId === activeSection)?.[1] || 'nav_dashboard');
+  const logoutLabel = tr('nav_logout');
 
   useEffect(() => {
     const onResize = () => {
@@ -1101,6 +1125,7 @@ Authorization: Bearer YOUR_API_KEY`}</pre>
         <aside className="sidebar">
           <div className="sidebar-top">
             <div className="sidebar-brand">
+              <div className="brand-mark" aria-hidden="true">MR</div>
               <div className="brand-copy">
                 <p className="eyebrow">{tr('brand_console')}</p>
                 <h1>{tr('brand_name')}</h1>
@@ -1117,25 +1142,42 @@ Authorization: Bearer YOUR_API_KEY`}</pre>
             </button>
           </div>
           <nav className="sidebar-nav">
-            {NAV_ITEMS.map(([sectionId, labelKey]) => (
-              <button key={sectionId} type="button" className={`nav-btn ${activeSection === sectionId ? 'active' : ''}`.trim()} onClick={() => switchSection(sectionId)}>
-                <span className="nav-btn__label">{tr(labelKey)}</span>
-              </button>
-            ))}
+            {NAV_ITEMS.map(([sectionId, labelKey]) => {
+              const label = tr(labelKey);
+              return (
+                <button
+                  key={sectionId}
+                  type="button"
+                  title={label}
+                  className={`nav-btn ${activeSection === sectionId ? 'active' : ''}`.trim()}
+                  onClick={() => switchSection(sectionId)}
+                >
+                  <span className="nav-btn__short" aria-hidden="true">{getCompactLabel(sectionId, label)}</span>
+                  <span className="nav-btn__label">{label}</span>
+                </button>
+              );
+            })}
           </nav>
           <div className="sidebar-footer">
-            <BusyButton type="button" className="sidebar-logout" busy={isBusy('logout')} onClick={handleLogout}>{tr('nav_logout')}</BusyButton>
+            <BusyButton type="button" className="sidebar-logout" busy={isBusy('logout')} onClick={handleLogout} title={logoutLabel}>
+              <span className="nav-btn__short" aria-hidden="true">{getCompactLabel('logout', logoutLabel)}</span>
+              <span className="nav-btn__label">{logoutLabel}</span>
+            </BusyButton>
           </div>
         </aside>
         <button type="button" className="sidebar-overlay" aria-label={tr('close_sidebar')} onClick={() => setSidebarOpen(false)} />
         <main className="content-shell">
           <div className="content-topbar">
             <button type="button" className="mobile-nav-btn" aria-label={tr('open_sidebar')} onClick={() => setSidebarOpen(true)}>
-              <span>≡</span>
+              <span className="mobile-nav-glyph" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
             </button>
             <div className="content-topbar-copy">
               <p className="eyebrow">{tr('topbar_workspace')}</p>
-              <strong>{tr(NAV_ITEMS.find(([sectionId]) => sectionId === activeSection)?.[1] || 'nav_dashboard')}</strong>
+              <strong>{currentSectionLabel}</strong>
             </div>
           </div>
           {loadError && loaded ? <div className="toast-error">{loadError}</div> : null}
