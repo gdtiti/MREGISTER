@@ -189,7 +189,7 @@ button, input, select, textarea { font: inherit; }
   width: 100%;
   min-height: 46px;
   border-radius: 16px;
-  border: 1px solid transparent;
+  border: 0;
   background: transparent;
   color: var(--ink);
   display: flex;
@@ -209,16 +209,14 @@ button, input, select, textarea { font: inherit; }
 .nav-btn:hover:not(:disabled),
 .sidebar-logout:hover:not(:disabled),
 .sidebar-footer-toggle:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.62);
+  background: transparent;
   color: var(--ink);
-  border-color: rgba(200, 187, 159, 0.42);
   box-shadow: none;
   transform: none;
 }
 
 .sidebar-footer-toggle {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(18, 108, 82, 0.14);
+  background: transparent;
 }
 
 .nav-btn__icon {
@@ -251,16 +249,16 @@ button, input, select, textarea { font: inherit; }
 }
 
 .nav-btn.active {
-  background: linear-gradient(145deg, var(--accent), var(--accent-strong));
-  color: #fff;
-  box-shadow: 0 16px 28px rgba(10, 79, 60, 0.18);
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
 }
 
 .nav-btn.active .nav-btn__icon,
 .sidebar-logout:hover:not(:disabled) .nav-btn__icon,
 .sidebar-footer-toggle:hover:not(:disabled) .nav-btn__icon {
-  background: rgba(255, 255, 255, 0.16);
-  color: inherit;
+  background: rgba(18, 108, 82, 0.14);
+  color: var(--accent-strong);
 }
 
 .nav-btn:hover:not(:disabled) .nav-btn__icon,

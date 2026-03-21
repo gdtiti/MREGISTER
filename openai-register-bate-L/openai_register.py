@@ -272,6 +272,49 @@ def _decode_jwt_segment(seg: str) -> Dict[str, Any]:
     except Exception:
         return {}
 
+
+def fetch_client_auth_session_dump(session: requests.Session, *, timeout: int = 20) -> Optional[Dict[str, Any]]:
+    try:
+        resp = session.get(
+            "https://auth.openai.com/api/accounts/client_auth_session_dump",
+            headers={"accept": "application/json"},
+            timeout=timeout,
+        )
+        print(f"[*] client_auth_session_dump 状态: {resp.status_code}")
+        if resp.status_code != 200:
+            try:
+                print(resp.text)
+            except Exception:
+                pass
+            return None
+        return resp.json()
+    except Exception as e:
+        print(f"[Warn] 获取 client_auth_session_dump 失败: {e}")
+        return None
+
+
+def _extract_org_selection(session_dump: Dict[str, Any]) -> Optional[tuple[str, str]]:
+    client_auth_session = session_dump.get("client_auth_session") or {}
+    organizations = client_auth_session.get("organizations") or []
+    if not organizations:
+        return None
+
+    first_org = organizations[0] or {}
+    org_id = str(first_org.get("id") or "").strip()
+    if not org_id:
+        return None
+
+    projects = first_org.get("projects") or []
+    if not projects:
+        return None
+
+    first_project = projects[0] or {}
+    project_id = str(first_project.get("id") or "").strip()
+    if not project_id:
+        return None
+
+    return org_id, project_id
+
 def _to_int(v: Any) -> int:
     try: return int(v)
     except (TypeError, ValueError): return 0
@@ -566,69 +609,140 @@ def run(proxy: Optional[str]) -> Optional[tuple[str, str, str]]:
                 pass
             return None
 
-        auth_cookie = s.cookies.get("oai-client-auth-session")
-        if not auth_cookie:
-            print("[Error] 未能获取到授权 Cookie")
-            return None
+        # 解析 create_account 响应，确定后续分支
+        try:
+            ca_json = create_account_resp.json() or {}
+        except Exception:
+            ca_json = {}
+        ca_continue_url = str(ca_json.get("continue_url") or "").strip()
+        ca_page_type = str((ca_json.get("page") or {}).get("type") or "").strip()
+        print(f"[*] create_account continue_url: {ca_continue_url}, page_type: {ca_page_type}")
 
-        auth_json = _decode_jwt_segment(auth_cookie.split(".")[0])
-        workspaces = auth_json.get("workspaces") or []
-        
+        # ---- 尝试从 cookie 获取 workspace（主路径） ----
+        auth_cookie = s.cookies.get("oai-client-auth-session")
+        workspaces = []
+        if auth_cookie:
+            auth_json = _decode_jwt_segment(auth_cookie.split(".")[0])
+            workspaces = auth_json.get("workspaces") or []
+
+        # ---- cookie 没 workspace → 从 dump 补救 ----
+        session_dump = None
+        if not workspaces:
+            print("[Info] auth cookie 不含 workspace，尝试 client_auth_session_dump 补救")
+            session_dump = fetch_client_auth_session_dump(s)
+            if session_dump:
+                cas = session_dump.get("client_auth_session") or {}
+                workspaces = cas.get("workspaces") or []
+                if workspaces:
+                    print(f"[*] 从 dump 获取到 {len(workspaces)} 个 workspace")
+
+        # ---- 确定 continue_url ----
+        continue_url = ""
+
         if workspaces:
             workspace_id = str((workspaces[0] or {}).get("id") or "").strip()
-            if not workspace_id:
-                print("[Error] 无法解析 workspace_id")
-                return None
+            if workspace_id:
+                print(f"[*] 使用 workspace_id: {workspace_id}")
+                select_resp = s.post(
+                    "https://auth.openai.com/api/accounts/workspace/select",
+                    headers={
+                        "referer": "https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
+                        "content-type": "application/json",
+                    },
+                    data=json.dumps({"workspace_id": workspace_id}),
+                )
+                print(f"[*] workspace/select 状态: {select_resp.status_code}")
+                if select_resp.status_code == 200:
+                    # 兼容：响应可能是 JSON 或 HTML
+                    try:
+                        sel_json = select_resp.json()
+                        continue_url = str(sel_json.get("continue_url") or "").strip()
+                    except Exception:
+                        # 响应是 HTML，检查 header 中的 Location
+                        loc = select_resp.headers.get("Location") or ""
+                        if loc:
+                            continue_url = urllib.parse.urljoin(select_resp.url, loc)
+                        print(f"[*] workspace/select 返回非 JSON，Location: {loc or '无'}")
+                else:
+                    err_body = select_resp.text[:300]
+                    print(f"[Warn] workspace/select 失败 {select_resp.status_code}: {err_body}")
+                    # 检查是否是 invalid_auth_step（说明服务端当前状态不允许此操作）
+                    try:
+                        err_json = select_resp.json()
+                        if (err_json.get("error") or {}).get("code") == "invalid_auth_step":
+                            print("[Warn] 服务端返回 invalid_auth_step，当前授权流程状态不允许 workspace/select")
+                    except Exception:
+                        pass
 
-            select_body = json.dumps({"workspace_id": workspace_id})
-            select_resp = s.post(
-                "https://auth.openai.com/api/accounts/workspace/select",
-                headers={
-                    "referer": "https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
-                    "content-type": "application/json",
-                },
-                data=select_body,
-            )
-            if select_resp.status_code != 200:
-                print(f"[Error] 选择 workspace 失败，状态码: {select_resp.status_code}")
-                try:
-                    print(select_resp.text)
-                except Exception:
-                    pass
-                return None
+        # ---- workspace 路径失败 → 尝试 org fallback ----
+        if not continue_url:
+            print("[Info] workspace 路径未成功，尝试 org fallback")
+            if not workspaces:
+                # 可能是 add-phone 分支，尝试跳过
+                if ca_continue_url and "add-phone" in ca_continue_url:
+                    print("[Info] 检测到 add-phone 分支，尝试获取 org 信息")
+                session_dump = session_dump or fetch_client_auth_session_dump(s)
+                if session_dump:
+                    org_selection = _extract_org_selection(session_dump)
+                    if org_selection:
+                        org_id, project_id = org_selection
+                        print(f"[*] org fallback: org_id={org_id}, project_id={project_id}")
+                        org_resp = s.post(
+                            "https://auth.openai.com/api/accounts/organization/select",
+                            headers={
+                                "referer": "https://auth.openai.com/sign-in-with-chatgpt/codex/organization",
+                                "accept": "application/json",
+                                "content-type": "application/json",
+                            },
+                            data=json.dumps({"org_id": org_id, "project_id": project_id}),
+                        )
+                        if org_resp.status_code == 200:
+                            try:
+                                continue_url = str((org_resp.json() or {}).get("continue_url") or "").strip()
+                            except Exception:
+                                pass
 
-            continue_url = str((select_resp.json() or {}).get("continue_url") or "").strip()
-            if not continue_url:
-                print("[Error] workspace/select 响应里缺少 continue_url")
-                return None
-        else:
-            print("[Info] Cookie 不携带 workspace，直接走 consent 路径")
-            # 直接跳转到 OAuth authorize 接口，让服务器处理
-            continue_url = f"https://auth.openai.com/oauth/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={urllib.parse.quote(oauth.redirect_uri, safe='')}&scope={urllib.parse.quote(DEFAULT_SCOPE, safe='')}&state={oauth.state}&code_challenge={_sha256_b64url_no_pad(oauth.code_verifier)}&code_challenge_method=S256&prompt=none"
+        # ---- 都没有 → 直接用 create_account 的 continue_url ----
+        if not continue_url and ca_continue_url:
+            print(f"[Info] 使用 create_account 原始 continue_url: {ca_continue_url}")
+            continue_url = ca_continue_url
 
+        if not continue_url:
+            print("[Error] 无法确定后续跳转 URL")
+            return None
+
+        # ---- 跟随重定向链 ----
         current_url = continue_url
         print(f"[*] 开始跟随重定向链: {current_url[:200]}")
-        for i in range(6):
-            final_resp = s.get(current_url, allow_redirects=False, timeout=15)
+        for i in range(8):
+            final_resp = s.get(current_url, allow_redirects=False, timeout=30)
             location = final_resp.headers.get("Location") or ""
             print(f"[*] 重定向步骤 {i+1}: 状态={final_resp.status_code}, 位置={location[:200] if location else '无'}")
-            if final_resp.status_code not in [301, 302, 303, 307, 308]:
-                print(f"[*] 非重定向状态码，停止跟随")
-                break
-            if not location:
-                print(f"[*] 无 Location 头，停止跟随")
-                break
-            next_url = urllib.parse.urljoin(current_url, location)
-            if "code=" in next_url and "state=" in next_url:
-                print(f"[*] 找到 OAuth callback URL")
-                token_json = submit_callback_url(
-                    callback_url=next_url,
-                    code_verifier=oauth.code_verifier,
-                    redirect_uri=oauth.redirect_uri,
-                    expected_state=oauth.state,
-                )
-                return token_json, email, password
-            current_url = next_url
+            if final_resp.status_code in [301, 302, 303, 307, 308] and location:
+                next_url = urllib.parse.urljoin(current_url, location)
+                if "code=" in next_url and "state=" in next_url:
+                    print(f"[*] 找到 OAuth callback URL")
+                    token_json = submit_callback_url(
+                        callback_url=next_url,
+                        code_verifier=oauth.code_verifier,
+                        redirect_uri=oauth.redirect_uri,
+                        expected_state=oauth.state,
+                    )
+                    return token_json, email, password
+                if "error=" in next_url:
+                    print(f"[Error] OAuth 错误重定向: {next_url[:250]}")
+                    return None
+                current_url = next_url
+                continue
+            # 非重定向：判断是否命中 add-phone 等强制步骤
+            if "add-phone" in current_url:
+                print("[Warn] 命中 add-phone 强制手机号验证分支，服务端要求手机验证后才能继续 OAuth 流程")
+                print("[Warn] 这是服务端风控策略，非代码问题；循环模式将自动重试")
+            elif "log-in" in current_url or "login" in current_url:
+                print("[Warn] 重定向到登录页面，会话可能已失效")
+            else:
+                print(f"[*] 非重定向响应，停止跟随")
+            break
 
         print("[Error] 未能在重定向链中捕获到最终 Callback URL")
         print(f"[*] 最终URL: {current_url[:200]}")
